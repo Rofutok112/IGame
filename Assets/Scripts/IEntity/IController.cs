@@ -11,6 +11,7 @@ namespace IGame.IEntity
     {
         public Rigidbody2D Rb { get; private set; }
         private IState currentState;
+        private bool inputEnabled = true;
 
         [Header("Settings")]
         [Tooltip("The vertical threshold for deciding if the edge was grabbed (local space).")]
@@ -73,6 +74,8 @@ namespace IGame.IEntity
 
         void Update()
         {
+            if (!inputEnabled) return;
+
             if (currentState != null)
             {
                 currentState.HandleInput();
@@ -82,10 +85,17 @@ namespace IGame.IEntity
 
         void FixedUpdate()
         {
+            if (!inputEnabled) return;
+
             if (currentState != null)
             {
                 currentState.FixedUpdate();
             }
+        }
+
+        public void SetInputEnabled(bool enabled)
+        {
+            inputEnabled = enabled;
         }
 
         /// <summary>
@@ -144,6 +154,50 @@ namespace IGame.IEntity
             {
                 currentState.Enter(this);
             }
+        }
+
+        public bool TryBeginGrab(Vector2 mousePos)
+        {
+            Collider2D[] cols = Physics2D.OverlapPointAll(mousePos);
+            bool hitThis = false;
+            foreach (var col in cols)
+            {
+                if (col.gameObject == gameObject)
+                {
+                    hitThis = true;
+                    break;
+                }
+            }
+
+            if (!hitThis)
+                return false;
+
+            Vector2 localPoint = transform.InverseTransformPoint(mousePos);
+            GrabLocalPoint = localPoint;
+            GrabWorldPoint = mousePos;
+
+            if (IsInMoveGrabZone(localPoint))
+            {
+                ChangeState(new MovingState());
+            }
+            else if (IsInStretchGrabZone(localPoint))
+            {
+                StretchFromTop = GetTopStretchGrabZoneLocalRect().Contains(localPoint);
+                ChangeState(new StretchingState());
+            }
+            else if (IsInEdgeGrabZone(localPoint))
+            {
+                ChangeState(new RotatingState());
+            }
+            else
+            {
+                if (Mathf.Abs(localPoint.y) >= edgeGrabThreshold)
+                    ChangeState(new RotatingState());
+                else
+                    ChangeState(new MovingState());
+            }
+
+            return true;
         }
 
         public Vector2 GetMouseWorldPos()
