@@ -26,7 +26,7 @@ namespace IGame.IEntity.States
             controller.Rb.bodyType = RigidbodyType2D.Kinematic;
             controller.Rb.linearVelocity = Vector2.zero;
             controller.Rb.angularVelocity = 0f;
-            _colliders = controller.GetComponents<Collider2D>();
+            _colliders = controller.GetSolidColliders();
 
             // Rotation can leave the collider in a tiny overlap/contact state.
             // Clear that first so the first movement cast doesn't get stuck at distance 0.

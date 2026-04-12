@@ -1,3 +1,4 @@
+using System.Linq;
 using UnityEngine;
 using IGame.IEntity.States;
 #if ENABLE_INPUT_SYSTEM
@@ -47,6 +48,13 @@ namespace IGame.IEntity
         public Vector2 dragReleaseZoneOffset = Vector2.zero;
         [Tooltip("Local-space size of the drag-release area. Zero keeps using maxDragDistanceFromCenter.")]
         public Vector2 dragReleaseZoneSize = Vector2.zero;
+        [Header("Guides")]
+        [Tooltip("Shown only while the object is in rotating state.")]
+        public GameObject rotationGuideObject;
+        [Tooltip("If enabled, hides the rotation guide automatically on Start.")]
+        public bool hideRotationGuideOnStart = true;
+        [Tooltip("If enabled, stretches the rotation guide horizontally based on the current Y scale of the I object.")]
+        public bool scaleRotationGuideWidthWithStretch = true;
 
         [Header("Collision")]
         [Tooltip("Layers that block movement and rotation. Default = Everything.")]
@@ -55,6 +63,10 @@ namespace IGame.IEntity
         public Vector2 GrabLocalPoint { get; set; }
         public Vector2 GrabWorldPoint { get; set; }
         public bool StretchFromTop { get; set; }
+
+        private Vector3 initialRotationGuideLocalScale = Vector3.one;
+        private float initialAbsLocalScaleY = 1f;
+        private bool hasCachedRotationGuideScale;
 
         /// <summary>Returns a ContactFilter2D configured with the collisionMask, excluding triggers.</summary>
         public ContactFilter2D GetContactFilter()
@@ -69,6 +81,13 @@ namespace IGame.IEntity
         void Start()
         {
             Rb = GetComponent<Rigidbody2D>();
+            CacheRotationGuideScale();
+
+            if (hideRotationGuideOnStart)
+            {
+                HideRotationGuide();
+            }
+
             ChangeState(new FallingState());
         }
 
@@ -98,6 +117,95 @@ namespace IGame.IEntity
             inputEnabled = enabled;
         }
 
+        public void ShowRotationGuide()
+        {
+            if (rotationGuideObject != null)
+            {
+                SyncRotationGuideScale();
+                rotationGuideObject.SetActive(true);
+            }
+        }
+
+        public void HideRotationGuide()
+        {
+            if (rotationGuideObject != null)
+            {
+                rotationGuideObject.SetActive(false);
+            }
+        }
+
+        public void SyncRotationGuideScale()
+        {
+            if (!scaleRotationGuideWidthWithStretch || rotationGuideObject == null)
+                return;
+
+            CacheRotationGuideScale();
+
+            float currentAbsScaleY = Mathf.Abs(transform.localScale.y);
+            float stretchRatio = initialAbsLocalScaleY > 0.0001f
+                ? currentAbsScaleY / initialAbsLocalScaleY
+                : 1f;
+
+            Vector3 scaledGuide = initialRotationGuideLocalScale;
+            scaledGuide.x *= stretchRatio;
+            rotationGuideObject.transform.localScale = scaledGuide;
+        }
+
+        private void CacheRotationGuideScale()
+        {
+            if (hasCachedRotationGuideScale || rotationGuideObject == null)
+                return;
+
+            initialRotationGuideLocalScale = rotationGuideObject.transform.localScale;
+            initialAbsLocalScaleY = Mathf.Max(0.0001f, Mathf.Abs(transform.localScale.y));
+            hasCachedRotationGuideScale = true;
+        }
+
+        public Collider2D[] GetSolidColliders()
+        {
+            return GetComponents<Collider2D>()
+                .Where(c => c != null && c.enabled && !c.isTrigger)
+                .ToArray();
+        }
+
+        public BoxCollider2D[] GetSolidBoxColliders()
+        {
+            return GetComponents<BoxCollider2D>()
+                .Where(c => c != null && c.enabled && !c.isTrigger)
+                .ToArray();
+        }
+
+        public Collider2D[] GetGrabbableColliders()
+        {
+            return GetComponents<Collider2D>()
+                .Where(c => c != null && c.enabled)
+                .ToArray();
+        }
+
+        public bool ContainsPointInSolidColliders(Vector2 worldPoint)
+        {
+            var colliders = GetSolidColliders();
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                if (colliders[i].OverlapPoint(worldPoint))
+                    return true;
+            }
+
+            return false;
+        }
+
+        public bool ContainsPointInGrabbableColliders(Vector2 worldPoint)
+        {
+            var colliders = GetGrabbableColliders();
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                if (colliders[i].OverlapPoint(worldPoint))
+                    return true;
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// Pushes the Rigidbody out of any colliders it is genuinely penetrating.
         /// Only reacts to penetrations deeper than <see cref="DepenetrationThreshold"/>
@@ -105,7 +213,7 @@ namespace IGame.IEntity
         /// </summary>
         public void Depenetrate()
         {
-            var colliders = GetComponents<Collider2D>();
+            var colliders = GetSolidColliders();
             if (colliders == null || colliders.Length == 0) return;
 
             Physics2D.SyncTransforms();
@@ -158,18 +266,7 @@ namespace IGame.IEntity
 
         public bool TryBeginGrab(Vector2 mousePos)
         {
-            Collider2D[] cols = Physics2D.OverlapPointAll(mousePos);
-            bool hitThis = false;
-            foreach (var col in cols)
-            {
-                if (col.gameObject == gameObject)
-                {
-                    hitThis = true;
-                    break;
-                }
-            }
-
-            if (!hitThis)
+            if (!ContainsPointInGrabbableColliders(mousePos))
                 return false;
 
             Vector2 localPoint = transform.InverseTransformPoint(mousePos);
@@ -281,19 +378,19 @@ namespace IGame.IEntity
 
         public Rect GetTopEdgeGrabZoneLocalRect()
         {
-            Vector2 colliderSize = GetApproxLocalColliderSize();
-            Vector2 size = GetEdgeGrabZoneSize(colliderSize);
-            float topCenterY = edgeGrabThreshold + size.y * 0.5f;
-            Vector2 center = new Vector2(0f, topCenterY) + topEdgeGrabZoneOffset;
+            Rect colliderRect = GetApproxLocalColliderRect();
+            Vector2 size = GetEdgeGrabZoneSize(colliderRect.size);
+            float topCenterY = colliderRect.center.y + edgeGrabThreshold + size.y * 0.5f;
+            Vector2 center = new Vector2(colliderRect.center.x, topCenterY) + topEdgeGrabZoneOffset;
             return new Rect(center - size * 0.5f, size);
         }
 
         public Rect GetBottomEdgeGrabZoneLocalRect()
         {
-            Vector2 colliderSize = GetApproxLocalColliderSize();
-            Vector2 size = GetEdgeGrabZoneSize(colliderSize);
-            float bottomCenterY = -edgeGrabThreshold - size.y * 0.5f;
-            Vector2 center = new Vector2(0f, bottomCenterY) + bottomEdgeGrabZoneOffset;
+            Rect colliderRect = GetApproxLocalColliderRect();
+            Vector2 size = GetEdgeGrabZoneSize(colliderRect.size);
+            float bottomCenterY = colliderRect.center.y - edgeGrabThreshold - size.y * 0.5f;
+            Vector2 center = new Vector2(colliderRect.center.x, bottomCenterY) + bottomEdgeGrabZoneOffset;
             return new Rect(center - size * 0.5f, size);
         }
 
@@ -302,9 +399,9 @@ namespace IGame.IEntity
             if (stretchGrabZoneSize.x <= 0f || stretchGrabZoneSize.y <= 0f)
                 return new Rect(Vector2.zero, Vector2.zero);
 
-            Vector2 colliderSize = GetApproxLocalColliderSize();
-            float topCenterY = colliderSize.y * 0.5f - stretchGrabZoneSize.y * 0.5f;
-            Vector2 center = new Vector2(0f, topCenterY) + topStretchGrabZoneOffset;
+            Rect colliderRect = GetApproxLocalColliderRect();
+            float topCenterY = colliderRect.yMax - stretchGrabZoneSize.y * 0.5f;
+            Vector2 center = new Vector2(colliderRect.center.x, topCenterY) + topStretchGrabZoneOffset;
             return new Rect(center - stretchGrabZoneSize * 0.5f, stretchGrabZoneSize);
         }
 
@@ -313,9 +410,9 @@ namespace IGame.IEntity
             if (stretchGrabZoneSize.x <= 0f || stretchGrabZoneSize.y <= 0f)
                 return new Rect(Vector2.zero, Vector2.zero);
 
-            Vector2 colliderSize = GetApproxLocalColliderSize();
-            float bottomCenterY = -colliderSize.y * 0.5f + stretchGrabZoneSize.y * 0.5f;
-            Vector2 center = new Vector2(0f, bottomCenterY) + bottomStretchGrabZoneOffset;
+            Rect colliderRect = GetApproxLocalColliderRect();
+            float bottomCenterY = colliderRect.yMin + stretchGrabZoneSize.y * 0.5f;
+            Vector2 center = new Vector2(colliderRect.center.x, bottomCenterY) + bottomStretchGrabZoneOffset;
             return new Rect(center - stretchGrabZoneSize * 0.5f, stretchGrabZoneSize);
         }
 
@@ -329,7 +426,12 @@ namespace IGame.IEntity
 
         public Vector2 GetApproxLocalColliderSize()
         {
-            var boxCols = GetComponents<BoxCollider2D>();
+            return GetApproxLocalColliderRect().size;
+        }
+
+        public Rect GetApproxLocalColliderRect()
+        {
+            var boxCols = GetSolidBoxColliders();
             if (boxCols != null && boxCols.Length > 0)
             {
                 Vector2 min = new Vector2(float.MaxValue, float.MaxValue);
@@ -343,10 +445,10 @@ namespace IGame.IEntity
                 }
 
                 if (min.x != float.MaxValue && max.x != float.MinValue)
-                    return max - min;
+                    return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
             }
 
-            var anyCols = GetComponents<Collider2D>();
+            var anyCols = GetSolidColliders();
             if (anyCols != null && anyCols.Length > 0)
             {
                 Vector3 ls = transform.lossyScale;
@@ -356,12 +458,14 @@ namespace IGame.IEntity
                     if (anyCols[i] != null)
                         bounds.Encapsulate(anyCols[i].bounds);
                 }
-                return new Vector2(
+                Vector2 center = transform.InverseTransformPoint(bounds.center);
+                Vector2 size = new Vector2(
                     ls.x > 0.001f ? bounds.size.x / Mathf.Abs(ls.x) : 1f,
                     ls.y > 0.001f ? bounds.size.y / Mathf.Abs(ls.y) : edgeGrabThreshold * 2f);
+                return new Rect(center - size * 0.5f, size);
             }
 
-            return new Vector2(1f, edgeGrabThreshold * 2f);
+            return new Rect(new Vector2(-0.5f, -edgeGrabThreshold), new Vector2(1f, edgeGrabThreshold * 2f));
         }
 
 #if UNITY_EDITOR
@@ -380,8 +484,8 @@ namespace IGame.IEntity
             float localHalfW = 0.5f;
             float localHalfH = edgeGrabThreshold + 0.5f;
 
-            var boxCols = GetComponents<BoxCollider2D>();
-            if (boxCols != null && boxCols.Length > 0)
+            var boxCols = GetSolidBoxColliders();
+            if (boxCols.Length > 0)
             {
                 Vector2 colliderSize = GetApproxLocalColliderSize();
                 localHalfW = colliderSize.x * 0.5f;
@@ -389,7 +493,7 @@ namespace IGame.IEntity
             }
             else
             {
-                var anyCols = GetComponents<Collider2D>();
+                var anyCols = GetSolidColliders();
                 if (anyCols != null && anyCols.Length > 0)
                 {
                     // bounds is world-space; divide by lossy scale to approximate local size

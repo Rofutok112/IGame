@@ -11,6 +11,8 @@ namespace IGame.IEntity.States
         private Vector2 anchorWorldPos;
         private Vector2 stretchAxis;
         private float stretchDirection;
+        private float baseHeightWorld;
+        private float initialGrabProjection;
 
         public override void Enter(IController controller)
         {
@@ -28,7 +30,13 @@ namespace IGame.IEntity.States
             stretchDirection = controller.StretchFromTop ? 1f : -1f;
 
             float currentHalfHeightWorld = baseLocalHeight * Mathf.Abs(baseScale.y) * 0.5f;
+            baseHeightWorld = currentHalfHeightWorld * 2f;
             anchorWorldPos = controller.Rb.position - stretchAxis * stretchDirection * currentHalfHeightWorld;
+
+            // Depenetrate can nudge the object before stretching begins, so derive the
+            // grab point from the stored local point after the final position is settled.
+            Vector2 settledGrabWorldPoint = controller.transform.TransformPoint(controller.GrabLocalPoint);
+            initialGrabProjection = Vector2.Dot(settledGrabWorldPoint - anchorWorldPos, stretchAxis * stretchDirection);
         }
 
         public override void HandleInput()
@@ -44,7 +52,9 @@ namespace IGame.IEntity.States
             if (!controller.IsMouseHeld()) return;
 
             Vector2 mousePos = controller.GetMouseWorldPos();
-            float desiredHeightWorld = Vector2.Dot(mousePos - anchorWorldPos, stretchAxis * stretchDirection);
+            float currentGrabProjection = Vector2.Dot(mousePos - anchorWorldPos, stretchAxis * stretchDirection);
+            float desiredHeightWorld = baseHeightWorld + (currentGrabProjection - initialGrabProjection);
+            desiredHeightWorld = Mathf.Max(0.001f, desiredHeightWorld);
             float desiredScaleY = desiredHeightWorld / baseLocalHeight;
             desiredScaleY = Mathf.Clamp(desiredScaleY, controller.minStretchScaleY, controller.maxStretchScaleY);
 

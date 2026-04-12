@@ -29,14 +29,15 @@ namespace IGame.IEntity.States
         public override void Enter(IController controller)
         {
             base.Enter(controller);
+            controller.ShowRotationGuide();
             originalGravity = controller.Rb.gravityScale;
             originalBodyType = controller.Rb.bodyType;
             controller.Rb.bodyType = RigidbodyType2D.Kinematic;
             controller.Rb.linearVelocity = Vector2.zero;
             controller.Rb.angularVelocity = 0f;
 
-            _colliders = controller.GetComponents<Collider2D>();
-            _boxColliders = controller.GetComponents<BoxCollider2D>();
+            _colliders = controller.GetSolidColliders();
+            _boxColliders = controller.GetSolidBoxColliders();
             controller.Depenetrate();
 
             Vector2 mousePos = controller.GetMouseWorldPos();
@@ -162,6 +163,7 @@ namespace IGame.IEntity.States
 
         public override void Exit()
         {
+            controller.HideRotationGuide();
             controller.Rb.bodyType = originalBodyType;
             controller.Rb.gravityScale = originalGravity;
             controller.Rb.linearVelocity = Vector2.zero;
