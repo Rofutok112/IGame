@@ -1,4 +1,5 @@
 using System.Linq;
+using DG.Tweening;
 using UnityEngine;
 using IGame.IEntity.States;
 #if ENABLE_INPUT_SYSTEM
@@ -56,6 +57,34 @@ namespace IGame.IEntity
         [Tooltip("If enabled, stretches the rotation guide horizontally based on the current Y scale of the I object.")]
         public bool scaleRotationGuideWidthWithStretch = true;
 
+        [Header("Falling")]
+        [Min(0f)]
+        [Tooltip("Seconds to float before normal gravity is restored after entering FallingState.")]
+        public float fallingFloatDuration = 2f;
+        [Tooltip("Gravity scale used during the brief floating period.")]
+        public float fallingFloatGravityScale = 0f;
+        [Tooltip("Gravity scale restored after the floating period when the current gravity is near zero.")]
+        public float defaultFallingGravityScale = 1f;
+
+        [Header("State Visuals")]
+        [Tooltip("If enabled, plays simple visual feedback for grabbed and falling states.")]
+        public bool enableStateVisualFeedback = true;
+        [Tooltip("Tint applied while the I is fixed in place by a grab.")]
+        public Color pinnedStateColor = new Color(0.75f, 0.92f, 1f, 1f);
+        [Min(0.01f)]
+        [Tooltip("Blend time when entering or leaving the fixed state visuals.")]
+        public float pinnedStateBlendDuration = 0.12f;
+        [Tooltip("Flash color used when the I is released into falling.")]
+        public Color fallingFlashColor = new Color(1f, 0.88f, 0.7f, 1f);
+        [Min(0.01f)]
+        [Tooltip("Total duration of the falling flash.")]
+        public float fallingFlashDuration = 0.24f;
+        [Min(0.01f)]
+        [Tooltip("Duration of the small squash/stretch played when falling starts.")]
+        public float fallingSquashDuration = 0.2f;
+        [Tooltip("Relative scale applied briefly when falling starts. X > 1 and Y < 1 reads like a drop release.")]
+        public Vector2 fallingSquashScale = new Vector2(1.08f, 0.92f);
+
         [Header("Collision")]
         [Tooltip("Layers that block movement and rotation. Default = Everything.")]
         public LayerMask collisionMask = ~0;   // ~0 = all layers
@@ -67,6 +96,9 @@ namespace IGame.IEntity
         private Vector3 initialRotationGuideLocalScale = Vector3.one;
         private float initialAbsLocalScaleY = 1f;
         private bool hasCachedRotationGuideScale;
+        private SpriteRenderer[] cachedStateSpriteRenderers = new SpriteRenderer[0];
+        private Color[] cachedBaseSpriteColors = new Color[0];
+        private bool hasCachedStateVisuals;
 
         /// <summary>Returns a ContactFilter2D configured with the collisionMask, excluding triggers.</summary>
         public ContactFilter2D GetContactFilter()
@@ -82,6 +114,7 @@ namespace IGame.IEntity
         {
             Rb = GetComponent<Rigidbody2D>();
             CacheRotationGuideScale();
+            CacheStateVisuals();
 
             if (hideRotationGuideOnStart)
             {
@@ -159,6 +192,103 @@ namespace IGame.IEntity
             initialRotationGuideLocalScale = rotationGuideObject.transform.localScale;
             initialAbsLocalScaleY = Mathf.Max(0.0001f, Mathf.Abs(transform.localScale.y));
             hasCachedRotationGuideScale = true;
+        }
+
+        private void CacheStateVisuals()
+        {
+            if (hasCachedStateVisuals)
+                return;
+
+            cachedStateSpriteRenderers = GetComponentsInChildren<SpriteRenderer>(true);
+            cachedBaseSpriteColors = new Color[cachedStateSpriteRenderers.Length];
+            for (int i = 0; i < cachedStateSpriteRenderers.Length; i++)
+            {
+                cachedBaseSpriteColors[i] = cachedStateSpriteRenderers[i] != null
+                    ? cachedStateSpriteRenderers[i].color
+                    : Color.white;
+            }
+
+            hasCachedStateVisuals = true;
+        }
+
+        public void EnterPinnedVisualState()
+        {
+            if (!enableStateVisualFeedback)
+                return;
+
+            CacheStateVisuals();
+            for (int i = 0; i < cachedStateSpriteRenderers.Length; i++)
+            {
+                SpriteRenderer spriteRenderer = cachedStateSpriteRenderers[i];
+                if (spriteRenderer == null)
+                    continue;
+
+                spriteRenderer.DOKill();
+                spriteRenderer.DOColor(pinnedStateColor, pinnedStateBlendDuration)
+                    .SetLink(spriteRenderer.gameObject);
+            }
+        }
+
+        public void ExitPinnedVisualState()
+        {
+            if (!enableStateVisualFeedback)
+                return;
+
+            CacheStateVisuals();
+            for (int i = 0; i < cachedStateSpriteRenderers.Length; i++)
+            {
+                SpriteRenderer spriteRenderer = cachedStateSpriteRenderers[i];
+                if (spriteRenderer == null)
+                    continue;
+
+                spriteRenderer.DOKill();
+                spriteRenderer.DOColor(cachedBaseSpriteColors[i], pinnedStateBlendDuration)
+                    .SetLink(spriteRenderer.gameObject);
+            }
+        }
+
+        public void PlayFallingVisualCue()
+        {
+            if (!enableStateVisualFeedback)
+                return;
+
+            CacheStateVisuals();
+            ExitPinnedVisualState();
+
+            float halfFlashDuration = Mathf.Max(0.01f, fallingFlashDuration * 0.5f);
+            for (int i = 0; i < cachedStateSpriteRenderers.Length; i++)
+            {
+                SpriteRenderer spriteRenderer = cachedStateSpriteRenderers[i];
+                if (spriteRenderer == null)
+                    continue;
+
+                Color baseColor = cachedBaseSpriteColors[i];
+                spriteRenderer.DOKill();
+                spriteRenderer.DOColor(fallingFlashColor, halfFlashDuration)
+                    .SetLink(spriteRenderer.gameObject)
+                    .OnComplete(() =>
+                    {
+                        if (spriteRenderer != null)
+                        {
+                            spriteRenderer.DOColor(baseColor, halfFlashDuration)
+                                .SetLink(spriteRenderer.gameObject);
+                        }
+                    });
+            }
+
+            transform.DOKill();
+            Vector3 baseScale = transform.localScale;
+            Vector3 squashScale = new Vector3(
+                baseScale.x * fallingSquashScale.x,
+                baseScale.y * fallingSquashScale.y,
+                baseScale.z);
+
+            Sequence sequence = DOTween.Sequence()
+                .SetLink(gameObject)
+                .Append(transform.DOScale(squashScale, fallingSquashDuration * 0.45f).SetEase(Ease.OutQuad))
+                .Append(transform.DOScale(baseScale, fallingSquashDuration * 0.55f).SetEase(Ease.OutCubic));
+
+            sequence.Play();
         }
 
         public Collider2D[] GetSolidColliders()

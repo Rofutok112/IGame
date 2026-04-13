@@ -29,6 +29,7 @@ namespace IGame.IEntity.States
         public override void Enter(IController controller)
         {
             base.Enter(controller);
+            controller.EnterPinnedVisualState();
             controller.ShowRotationGuide();
             originalGravity = controller.Rb.gravityScale;
             originalBodyType = controller.Rb.bodyType;
@@ -163,6 +164,7 @@ namespace IGame.IEntity.States
 
         public override void Exit()
         {
+            controller.ExitPinnedVisualState();
             controller.HideRotationGuide();
             controller.Rb.bodyType = originalBodyType;
             controller.Rb.gravityScale = originalGravity;

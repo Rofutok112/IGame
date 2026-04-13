@@ -20,6 +20,7 @@ namespace IGame.IEntity.States
         public override void Enter(IController controller)
         {
             base.Enter(controller);
+            controller.EnterPinnedVisualState();
             originalGravity = controller.Rb.gravityScale;
             originalBodyType = controller.Rb.bodyType;
             // Kinematic body: prevents collision impulses from knocking the object off-course.
@@ -146,6 +147,7 @@ namespace IGame.IEntity.States
 
         public override void Exit()
         {
+            controller.ExitPinnedVisualState();
             controller.Rb.bodyType = originalBodyType;
             controller.Rb.gravityScale = originalGravity;
             controller.Rb.linearVelocity = Vector2.zero;

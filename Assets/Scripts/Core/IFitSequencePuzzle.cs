@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using DG.Tweening;
 using IGame.IEntity;
 using UnityEngine;
 using UnityEngine.Events;
@@ -59,6 +60,17 @@ namespace IGame.Core
         [SerializeField] private Transform ghostVisualParent;
         [SerializeField] private Color ghostVisualColor = new Color(0.7f, 0.7f, 0.7f, 0.7f);
         [SerializeField] private int ghostSortingOrderOffset = -1;
+        [SerializeField] private bool excludeChildObjectsFromGhost = true;
+
+        [Header("Clear Animation")]
+        [SerializeField] private bool playStepClearAnimation = true;
+        [SerializeField] private float stepClearPunchDuration = 0.2f;
+        [SerializeField] private Vector3 stepClearPunch = new Vector3(0.08f, 0.12f, 0f);
+        [SerializeField] private bool playAllClearedAnimation = true;
+        [SerializeField] private float allClearedPunchDuration = 0.45f;
+        [SerializeField] private Vector3 allClearedPunch = new Vector3(0.18f, 0.28f, 0f);
+        [SerializeField] private Color allClearedFlashColor = new Color(1f, 0.95f, 0.55f, 1f);
+        [SerializeField] private float allClearedFlashDuration = 0.3f;
 
         [Header("Events")]
         [SerializeField] private UnityEvent onProgressReset;
@@ -74,6 +86,7 @@ namespace IGame.Core
         private Vector3 initialTargetLocalScale = Vector3.one;
         private Vector3 initialTargetLossyScale = Vector3.one;
         private bool hasCachedInitialTargetScale;
+        private SpriteRenderer[] cachedTargetSpriteRenderers = Array.Empty<SpriteRenderer>();
 
         private void Awake()
         {
@@ -157,6 +170,7 @@ namespace IGame.Core
 
             initialTargetLocalScale = targetI.transform.localScale;
             initialTargetLossyScale = targetI.transform.lossyScale;
+            cachedTargetSpriteRenderers = targetI.GetComponentsInChildren<SpriteRenderer>(true);
             hasCachedInitialTargetScale = true;
         }
 
@@ -191,6 +205,11 @@ namespace IGame.Core
             clone.name = $"{targetI.gameObject.name}_GhostStep_{index + 1}";
             ApplyStepPoseToClone(clone.transform, step, parent);
 
+            if (excludeChildObjectsFromGhost)
+            {
+                RemoveChildObjectsFromGhost(clone.transform);
+            }
+
             foreach (Behaviour behaviour in clone.GetComponentsInChildren<Behaviour>(true))
             {
                 behaviour.enabled = false;
@@ -220,6 +239,14 @@ namespace IGame.Core
 
             clone.SetActive(false);
             return clone;
+        }
+
+        private static void RemoveChildObjectsFromGhost(Transform root)
+        {
+            for (int i = root.childCount - 1; i >= 0; i--)
+            {
+                Destroy(root.GetChild(i).gameObject);
+            }
         }
 
         private void ApplyStepPoseToClone(Transform cloneTransform, IFitSequenceStep step, Transform parent)
@@ -286,6 +313,7 @@ namespace IGame.Core
 
             step.onStepCleared?.Invoke();
             onStepCleared?.Invoke(CurrentStepIndex);
+            PlayStepClearAnimation();
 
             CurrentStepIndex++;
             currentHoldTimer = 0f;
@@ -309,7 +337,55 @@ namespace IGame.Core
             IsAllCleared = true;
             currentHoldTimer = 0f;
             UpdateStepVisuals();
+            PlayAllClearedAnimation();
             onAllCleared?.Invoke();
+        }
+
+        private void PlayStepClearAnimation()
+        {
+            if (!playStepClearAnimation || targetI == null)
+                return;
+
+            targetI.transform.DOKill();
+            targetI.transform.DOPunchScale(stepClearPunch, stepClearPunchDuration, 8, 0.8f)
+                .SetLink(targetI.gameObject);
+        }
+
+        private void PlayAllClearedAnimation()
+        {
+            if (targetI == null)
+                return;
+
+            if (playAllClearedAnimation)
+            {
+                targetI.transform.DOKill();
+                targetI.transform.DOPunchScale(allClearedPunch, allClearedPunchDuration, 10, 0.85f)
+                    .SetLink(targetI.gameObject);
+            }
+
+            if (cachedTargetSpriteRenderers == null || cachedTargetSpriteRenderers.Length == 0)
+                return;
+
+            float flashHalfDuration = Mathf.Max(0.01f, allClearedFlashDuration * 0.5f);
+            for (int i = 0; i < cachedTargetSpriteRenderers.Length; i++)
+            {
+                SpriteRenderer spriteRenderer = cachedTargetSpriteRenderers[i];
+                if (spriteRenderer == null)
+                    continue;
+
+                Color originalColor = spriteRenderer.color;
+                spriteRenderer.DOKill();
+                spriteRenderer.DOColor(allClearedFlashColor, flashHalfDuration)
+                    .SetLink(spriteRenderer.gameObject)
+                    .OnComplete(() =>
+                    {
+                        if (spriteRenderer != null)
+                        {
+                            spriteRenderer.DOColor(originalColor, flashHalfDuration)
+                                .SetLink(spriteRenderer.gameObject);
+                        }
+                    });
+            }
         }
 
         private void SkipInvalidSteps()

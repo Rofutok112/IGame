@@ -1,5 +1,6 @@
 using IGame.IEntity;
 using UnityEngine;
+using UnityEngine.Events;
 
 namespace IGame.Core
 {
@@ -9,6 +10,10 @@ namespace IGame.Core
     {
         [Tooltip("If enabled, zeroes velocity while waiting for the first grab.")]
         public bool freezeVelocityWhileFloating = true;
+        [Tooltip("Invoked when the float-until-first-grab state starts.")]
+        public UnityEvent onStarted;
+        [Tooltip("Invoked when the first successful grab activates the object.")]
+        public UnityEvent onActivated;
 
         private IController _controller;
         private Rigidbody2D _rb;
@@ -29,6 +34,7 @@ namespace IGame.Core
             }
 
             _controller.SetInputEnabled(false);
+            onStarted?.Invoke();
         }
 
         private void Update()
@@ -57,6 +63,7 @@ namespace IGame.Core
             _activated = true;
             _rb.bodyType = _originalBodyType;
             _controller.SetInputEnabled(true);
+            onActivated?.Invoke();
             enabled = false;
         }
     }
