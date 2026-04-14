@@ -1,6 +1,7 @@
 using System.Linq;
 using DG.Tweening;
 using UnityEngine;
+using UnityEngine.UI;
 using IGame.IEntity.States;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
@@ -102,6 +103,48 @@ namespace IGame.IEntity
         [Min(0f)]
         [Tooltip("Minimum angle movement required before another rotation sound can play.")]
         public float rotatingSoundAngleStep = 2.5f;
+        [Tooltip("Repeated while stretching.")]
+        public AudioClip stretchingClip;
+        [Range(0f, 1f)]
+        public float stretchingVolume = 1f;
+        [Min(0f)]
+        [Tooltip("Minimum time between repeated stretch sounds.")]
+        public float stretchingSoundInterval = 0.06f;
+        [Min(0f)]
+        [Tooltip("Minimum local Y scale change required before another stretch sound can play.")]
+        public float stretchingSoundScaleStep = 0.03f;
+        [Tooltip("Played once when the stretch reaches the minimum length.")]
+        public AudioClip stretchMinReachedClip;
+        [Range(0f, 1f)]
+        public float stretchMinReachedVolume = 1f;
+        [Tooltip("Played once when the stretch reaches the maximum length.")]
+        public AudioClip stretchMaxReachedClip;
+        [Range(0f, 1f)]
+        public float stretchMaxReachedVolume = 1f;
+        [Header("Cursor")]
+        [Tooltip("If enabled, swaps the mouse cursor when hovering move/rotate/stretch zones.")]
+        public bool enableInteractionCursor = true;
+        [Tooltip("If enabled, shows a dedicated cursor while the mouse button is held down.")]
+        public bool enableHeldCursor = true;
+        [Tooltip("Optional cursor shown when not hovering any interaction zone. Leave empty to use the OS default cursor.")]
+        public Texture2D defaultCursorTexture;
+        public Vector2 defaultCursorHotspot = Vector2.zero;
+        public Texture2D heldCursorTexture;
+        public Vector2 heldCursorHotspot = Vector2.zero;
+        public Texture2D moveCursorTexture;
+        public Vector2 moveCursorHotspot = Vector2.zero;
+        public Texture2D rotateCursorTexture;
+        public Vector2 rotateCursorHotspot = Vector2.zero;
+        public Texture2D stretchCursorTexture;
+        public Vector2 stretchCursorHotspot = Vector2.zero;
+        public CursorMode cursorMode = CursorMode.Auto;
+        [Tooltip("If enabled, custom cursors are drawn with a Screen Space Overlay canvas so they always appear in front.")]
+        public bool useOverlayCursor = true;
+        [Min(1)]
+        [Tooltip("Sorting order used by the generated cursor overlay canvas.")]
+        public int overlayCursorSortingOrder = 1000;
+        [Tooltip("Display size for the overlay cursor image in pixels.")]
+        public Vector2 overlayCursorSize = new Vector2(48f, 48f);
 
         [Header("Collision")]
         [Tooltip("Layers that block movement and rotation. Default = Everything.")]
@@ -118,6 +161,13 @@ namespace IGame.IEntity
         private Color[] cachedBaseSpriteColors = new Color[0];
         private bool hasCachedStateVisuals;
         private float lastRotatingSoundTime = float.NegativeInfinity;
+        private float lastStretchingSoundTime = float.NegativeInfinity;
+        private int lastStretchLimitState;
+        private InteractionCursorKind appliedCursorKind = InteractionCursorKind.None;
+        private Canvas cursorOverlayCanvas;
+        private RectTransform cursorOverlayRect;
+        private RawImage cursorOverlayImage;
+        private bool isUsingOverlayCursor;
 
         /// <summary>Returns a ContactFilter2D configured with the collisionMask, excluding triggers.</summary>
         public ContactFilter2D GetContactFilter()
@@ -138,6 +188,7 @@ namespace IGame.IEntity
             }
             CacheRotationGuideScale();
             CacheStateVisuals();
+            EnsureCursorOverlay();
 
             if (hideRotationGuideOnStart)
             {
@@ -149,6 +200,9 @@ namespace IGame.IEntity
 
         void Update()
         {
+            UpdateInteractionCursor();
+            UpdateOverlayCursorPosition();
+
             if (!inputEnabled) return;
 
             if (currentState != null)
@@ -168,9 +222,20 @@ namespace IGame.IEntity
             }
         }
 
+        void OnDisable()
+        {
+            ApplyCursor(InteractionCursorKind.None, true);
+            SetOverlayCursorVisible(false);
+            Cursor.visible = true;
+        }
+
         public void SetInputEnabled(bool enabled)
         {
             inputEnabled = enabled;
+            if (!inputEnabled)
+            {
+                ApplyCursor(InteractionCursorKind.None);
+            }
         }
 
         public void ShowRotationGuide()
@@ -342,6 +407,47 @@ namespace IGame.IEntity
             interactionAudioSource.PlayOneShot(rotatingClip, rotatingVolume);
         }
 
+        public void ResetStretchingSoundState()
+        {
+            lastStretchingSoundTime = float.NegativeInfinity;
+            lastStretchLimitState = 0;
+        }
+
+        public void TryPlayStretchingSound(float scaleDelta)
+        {
+            if (interactionAudioSource == null || stretchingClip == null)
+                return;
+
+            if (Mathf.Abs(scaleDelta) < stretchingSoundScaleStep)
+                return;
+
+            if (Time.unscaledTime - lastStretchingSoundTime < stretchingSoundInterval)
+                return;
+
+            lastStretchingSoundTime = Time.unscaledTime;
+            interactionAudioSource.PlayOneShot(stretchingClip, stretchingVolume);
+        }
+
+        public void UpdateStretchLimitSound(bool atMinLimit, bool atMaxLimit)
+        {
+            int nextState = atMinLimit ? -1 : atMaxLimit ? 1 : 0;
+            if (nextState == lastStretchLimitState)
+                return;
+
+            lastStretchLimitState = nextState;
+            if (interactionAudioSource == null)
+                return;
+
+            if (nextState < 0 && stretchMinReachedClip != null)
+            {
+                interactionAudioSource.PlayOneShot(stretchMinReachedClip, stretchMinReachedVolume);
+            }
+            else if (nextState > 0 && stretchMaxReachedClip != null)
+            {
+                interactionAudioSource.PlayOneShot(stretchMaxReachedClip, stretchMaxReachedVolume);
+            }
+        }
+
         public Collider2D[] GetSolidColliders()
         {
             return GetComponents<Collider2D>()
@@ -489,6 +595,19 @@ namespace IGame.IEntity
             return Vector2.zero;
 #else
             return Camera.main.ScreenToWorldPoint(Input.mousePosition);
+#endif
+        }
+
+        public Vector2 GetMouseScreenPos()
+        {
+#if ENABLE_INPUT_SYSTEM
+            if (Mouse.current != null)
+            {
+                return Mouse.current.position.ReadValue();
+            }
+            return Vector2.zero;
+#else
+            return Input.mousePosition;
 #endif
         }
 
@@ -647,6 +766,213 @@ namespace IGame.IEntity
             }
 
             return new Rect(new Vector2(-0.5f, -edgeGrabThreshold), new Vector2(1f, edgeGrabThreshold * 2f));
+        }
+
+        private void UpdateInteractionCursor()
+        {
+            if (!enableInteractionCursor && !enableHeldCursor)
+            {
+                ApplyCursor(InteractionCursorKind.None);
+                return;
+            }
+
+            if (!inputEnabled)
+            {
+                ApplyCursor(InteractionCursorKind.None);
+                return;
+            }
+
+            if (enableHeldCursor && IsMouseHeld())
+            {
+                ApplyCursor(InteractionCursorKind.Held);
+                return;
+            }
+
+            if (currentState is MovingState)
+            {
+                ApplyCursor(InteractionCursorKind.Move);
+                return;
+            }
+
+            if (currentState is RotatingState)
+            {
+                ApplyCursor(InteractionCursorKind.Rotate);
+                return;
+            }
+
+            if (currentState is StretchingState)
+            {
+                ApplyCursor(InteractionCursorKind.Stretch);
+                return;
+            }
+
+            Vector2 mouseWorldPos = GetMouseWorldPos();
+            if (!ContainsPointInGrabbableColliders(mouseWorldPos))
+            {
+                ApplyCursor(InteractionCursorKind.None);
+                return;
+            }
+
+            Vector2 localPoint = transform.InverseTransformPoint(mouseWorldPos);
+            if (IsInMoveGrabZone(localPoint))
+            {
+                ApplyCursor(InteractionCursorKind.Move);
+            }
+            else if (IsInStretchGrabZone(localPoint))
+            {
+                ApplyCursor(InteractionCursorKind.Stretch);
+            }
+            else if (IsInEdgeGrabZone(localPoint) || Mathf.Abs(localPoint.y) >= edgeGrabThreshold)
+            {
+                ApplyCursor(InteractionCursorKind.Rotate);
+            }
+            else
+            {
+                ApplyCursor(InteractionCursorKind.Move);
+            }
+        }
+
+        private void ApplyCursor(InteractionCursorKind cursorKind, bool force = false)
+        {
+            if (!force && appliedCursorKind == cursorKind)
+                return;
+
+            appliedCursorKind = cursorKind;
+
+            Texture2D texture = defaultCursorTexture;
+            Vector2 hotspot = defaultCursorHotspot;
+            switch (cursorKind)
+            {
+                case InteractionCursorKind.Move:
+                    texture = moveCursorTexture != null ? moveCursorTexture : defaultCursorTexture;
+                    hotspot = moveCursorTexture != null ? moveCursorHotspot : defaultCursorHotspot;
+                    break;
+                case InteractionCursorKind.Held:
+                    texture = heldCursorTexture != null ? heldCursorTexture : defaultCursorTexture;
+                    hotspot = heldCursorTexture != null ? heldCursorHotspot : defaultCursorHotspot;
+                    break;
+                case InteractionCursorKind.Rotate:
+                    texture = rotateCursorTexture != null ? rotateCursorTexture : defaultCursorTexture;
+                    hotspot = rotateCursorTexture != null ? rotateCursorHotspot : defaultCursorHotspot;
+                    break;
+                case InteractionCursorKind.Stretch:
+                    texture = stretchCursorTexture != null ? stretchCursorTexture : defaultCursorTexture;
+                    hotspot = stretchCursorTexture != null ? stretchCursorHotspot : defaultCursorHotspot;
+                    break;
+            }
+
+            bool shouldUseOverlay = useOverlayCursor && texture != null;
+            if (shouldUseOverlay)
+            {
+                EnsureCursorOverlay();
+                if (cursorOverlayImage != null)
+                {
+                    cursorOverlayImage.texture = texture;
+                    cursorOverlayImage.rectTransform.sizeDelta = overlayCursorSize;
+                    cursorOverlayImage.SetNativeSize();
+                    Vector2 nativeSize = cursorOverlayImage.rectTransform.sizeDelta;
+                    if (overlayCursorSize.x > 0f && overlayCursorSize.y > 0f)
+                    {
+                        nativeSize = overlayCursorSize;
+                    }
+                    cursorOverlayImage.rectTransform.sizeDelta = nativeSize;
+                    SetOverlayCursorPosition(GetMouseScreenPos(), hotspot, nativeSize.y);
+                    SetOverlayCursorVisible(true);
+                    Cursor.SetCursor(null, Vector2.zero, cursorMode);
+                    Cursor.visible = false;
+                    isUsingOverlayCursor = true;
+                    return;
+                }
+            }
+
+            SetOverlayCursorVisible(false);
+            if (isUsingOverlayCursor)
+            {
+                Cursor.visible = true;
+                isUsingOverlayCursor = false;
+            }
+
+            Cursor.SetCursor(texture, hotspot, cursorMode);
+            Cursor.visible = true;
+        }
+
+        private void EnsureCursorOverlay()
+        {
+            if (cursorOverlayCanvas != null)
+                return;
+
+            GameObject canvasObject = new GameObject($"{name}_CursorOverlay", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            cursorOverlayCanvas = canvasObject.GetComponent<Canvas>();
+            cursorOverlayCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            cursorOverlayCanvas.sortingOrder = overlayCursorSortingOrder;
+            cursorOverlayCanvas.overrideSorting = true;
+
+            CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(Screen.width, Screen.height);
+
+            GameObject imageObject = new GameObject("Cursor", typeof(RectTransform), typeof(RawImage));
+            imageObject.transform.SetParent(canvasObject.transform, false);
+            cursorOverlayRect = imageObject.GetComponent<RectTransform>();
+            cursorOverlayRect.anchorMin = Vector2.zero;
+            cursorOverlayRect.anchorMax = Vector2.zero;
+            cursorOverlayRect.pivot = Vector2.zero;
+            cursorOverlayImage = imageObject.GetComponent<RawImage>();
+            cursorOverlayImage.raycastTarget = false;
+            SetOverlayCursorVisible(false);
+        }
+
+        private void UpdateOverlayCursorPosition()
+        {
+            if (!isUsingOverlayCursor || cursorOverlayImage == null || !cursorOverlayImage.enabled)
+                return;
+
+            SetOverlayCursorPosition(GetMouseScreenPos(), GetActiveCursorHotspot(), cursorOverlayImage.rectTransform.sizeDelta.y);
+        }
+
+        private Vector2 GetActiveCursorHotspot()
+        {
+            switch (appliedCursorKind)
+            {
+                case InteractionCursorKind.Held:
+                    return heldCursorTexture != null ? heldCursorHotspot : defaultCursorHotspot;
+                case InteractionCursorKind.Move:
+                    return moveCursorTexture != null ? moveCursorHotspot : defaultCursorHotspot;
+                case InteractionCursorKind.Rotate:
+                    return rotateCursorTexture != null ? rotateCursorHotspot : defaultCursorHotspot;
+                case InteractionCursorKind.Stretch:
+                    return stretchCursorTexture != null ? stretchCursorHotspot : defaultCursorHotspot;
+                default:
+                    return defaultCursorHotspot;
+            }
+        }
+
+        private void SetOverlayCursorPosition(Vector2 screenPos, Vector2 hotspot, float visualHeight)
+        {
+            if (cursorOverlayRect == null)
+                return;
+
+            float convertedHotspotY = Mathf.Max(0f, visualHeight - hotspot.y);
+            cursorOverlayRect.anchoredPosition = new Vector2(
+                screenPos.x - hotspot.x,
+                screenPos.y - convertedHotspotY);
+        }
+
+        private void SetOverlayCursorVisible(bool visible)
+        {
+            if (cursorOverlayImage != null)
+            {
+                cursorOverlayImage.enabled = visible;
+            }
+        }
+
+        private enum InteractionCursorKind
+        {
+            None,
+            Held,
+            Move,
+            Rotate,
+            Stretch,
         }
 
 #if UNITY_EDITOR

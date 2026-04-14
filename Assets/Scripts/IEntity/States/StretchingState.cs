@@ -18,6 +18,7 @@ namespace IGame.IEntity.States
         {
             base.Enter(controller);
             controller.EnterPinnedVisualState();
+            controller.ResetStretchingSoundState();
             originalGravity = controller.Rb.gravityScale;
             originalBodyType = controller.Rb.bodyType;
             controller.Rb.bodyType = RigidbodyType2D.Kinematic;
@@ -56,12 +57,18 @@ namespace IGame.IEntity.States
             float currentGrabProjection = Vector2.Dot(mousePos - anchorWorldPos, stretchAxis * stretchDirection);
             float desiredHeightWorld = baseHeightWorld + (currentGrabProjection - initialGrabProjection);
             desiredHeightWorld = Mathf.Max(0.001f, desiredHeightWorld);
-            float desiredScaleY = desiredHeightWorld / baseLocalHeight;
-            desiredScaleY = Mathf.Clamp(desiredScaleY, controller.minStretchScaleY, controller.maxStretchScaleY);
+            float unclampedScaleY = desiredHeightWorld / baseLocalHeight;
+            float desiredScaleY = Mathf.Clamp(unclampedScaleY, controller.minStretchScaleY, controller.maxStretchScaleY);
 
             Vector3 newScale = baseScale;
             newScale.y = Mathf.Sign(baseScale.y) * desiredScaleY;
+            float currentScaleY = Mathf.Abs(controller.transform.localScale.y);
             controller.transform.localScale = newScale;
+            controller.TryPlayStretchingSound(desiredScaleY - currentScaleY);
+
+            bool atMinLimit = desiredScaleY <= controller.minStretchScaleY + 0.0001f && unclampedScaleY <= controller.minStretchScaleY;
+            bool atMaxLimit = desiredScaleY >= controller.maxStretchScaleY - 0.0001f && unclampedScaleY >= controller.maxStretchScaleY;
+            controller.UpdateStretchLimitSound(atMinLimit, atMaxLimit);
 
             float newHalfHeightWorld = baseLocalHeight * Mathf.Abs(newScale.y) * 0.5f;
             Vector2 centerPos = anchorWorldPos + stretchAxis * stretchDirection * newHalfHeightWorld;

@@ -24,6 +24,21 @@ namespace IGame.Core
         [Min(0f)]
         [Tooltip("How long to keep the button pressed after contact is temporarily lost.")]
         public float releaseGraceTime = 0.05f;
+        [Min(0f)]
+        [Tooltip("How long the button stays unavailable after being pressed. During this time it remains pressed and ignores new contacts.")]
+        public float respawnTime = 0f;
+
+        [Header("Audio")]
+        [Tooltip("AudioSource used for button sound effects. If empty, searched on this object.")]
+        public AudioSource audioSource;
+        [Tooltip("Played when the button is pressed.")]
+        public AudioClip pressClip;
+        [Range(0f, 1f)]
+        public float pressVolume = 1f;
+        [Tooltip("Played when the button is released or restored after cooldown.")]
+        public AudioClip releaseClip;
+        [Range(0f, 1f)]
+        public float releaseVolume = 1f;
 
         public UnityEvent onPress;
         public UnityEvent onRelease;
@@ -31,18 +46,24 @@ namespace IGame.Core
         public Rigidbody2DEvent onReleaseBody;
 
         public Rigidbody2D CurrentBody { get; private set; }
-        public bool IsPressed => _latchedPressed || CurrentBody != null;
+        public bool IsPressed => _latchedPressed || _isCoolingDown || CurrentBody != null;
 
         private readonly Collider2D[] _contactBuffer = new Collider2D[16];
         private Collider2D _buttonCollider;
         private Vector3 _releasedLocalPosition;
         private Vector3 _pressedLocalPosition;
         private bool _latchedPressed;
+        private bool _isCoolingDown;
         private float _lastPressTime;
+        private float _cooldownEndTime;
 
         private void Awake()
         {
             _buttonCollider = GetComponent<Collider2D>();
+            if (audioSource == null)
+            {
+                audioSource = GetComponent<AudioSource>();
+            }
             _releasedLocalPosition = transform.localPosition;
             _pressedLocalPosition = _releasedLocalPosition + pressedLocalOffset;
         }
@@ -51,6 +72,23 @@ namespace IGame.Core
         {
             if (_latchedPressed)
                 return;
+
+            if (_isCoolingDown)
+            {
+                if (Time.time >= _cooldownEndTime)
+                {
+                    _isCoolingDown = false;
+                    if (CurrentBody != null)
+                    {
+                        PlayReleaseSound();
+                        onRelease?.Invoke();
+                        onReleaseBody?.Invoke(CurrentBody);
+                        CurrentBody = null;
+                    }
+                }
+
+                return;
+            }
 
             Rigidbody2D pressingBody = FindPressingBody();
 
@@ -68,6 +106,7 @@ namespace IGame.Core
 
             if (CurrentBody != null)
             {
+                PlayReleaseSound();
                 onRelease?.Invoke();
                 onReleaseBody?.Invoke(CurrentBody);
             }
@@ -77,10 +116,34 @@ namespace IGame.Core
             if (CurrentBody != null)
             {
                 if (latchWhenPressed)
+                {
                     _latchedPressed = true;
+                }
+                else if (respawnTime > 0f)
+                {
+                    _isCoolingDown = true;
+                    _cooldownEndTime = Time.time + respawnTime;
+                }
 
+                PlayPressSound();
                 onPress?.Invoke();
                 onPressBody?.Invoke(CurrentBody);
+            }
+        }
+
+        private void PlayPressSound()
+        {
+            if (audioSource != null && pressClip != null)
+            {
+                audioSource.PlayOneShot(pressClip, pressVolume);
+            }
+        }
+
+        private void PlayReleaseSound()
+        {
+            if (audioSource != null && releaseClip != null)
+            {
+                audioSource.PlayOneShot(releaseClip, releaseVolume);
             }
         }
 

@@ -478,7 +478,7 @@ namespace IGame.Core
                 return false;
 
             float positionDelta = Vector2.Distance(targetI.transform.position, GetStepPosition(step));
-            float angleDelta = Mathf.Abs(Mathf.DeltaAngle(targetI.transform.eulerAngles.z, GetStepEulerAngles(step).z));
+            float angleDelta = GetSymmetricIAngleDelta(targetI.transform.eulerAngles.z, GetStepEulerAngles(step).z);
             float stretchDelta = Mathf.Abs(GetCurrentStretchValue() - GetTargetStretchValue(step));
 
             return positionDelta <= positionThreshold &&
@@ -489,6 +489,13 @@ namespace IGame.Core
         private float GetCurrentStretchValue()
         {
             return Mathf.Abs(targetI.transform.lossyScale.y);
+        }
+
+        private static float GetSymmetricIAngleDelta(float currentAngle, float targetAngle)
+        {
+            float directDelta = Mathf.Abs(Mathf.DeltaAngle(currentAngle, targetAngle));
+            float flippedDelta = Mathf.Abs(Mathf.DeltaAngle(currentAngle, targetAngle + 180f));
+            return Mathf.Min(directDelta, flippedDelta);
         }
 
         private static float GetTargetStretchValue(IFitSequenceStep step)

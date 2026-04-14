@@ -17,7 +17,12 @@ namespace IGame.Core
         [Tooltip("If enabled, movement is applied in local space.")]
         public bool useLocalSpace = false;
 
+        [Tooltip("If enabled, ignores further move requests after the first completed move until ResetTarget() is called.")]
+        public bool lockAfterFirstMove = true;
+
         private Vector3 _targetPosition;
+        private bool _hasPendingMove;
+        private bool _isMoveLocked;
 
         private void Awake()
         {
@@ -29,6 +34,15 @@ namespace IGame.Core
             Vector3 current = GetCurrentPosition();
             Vector3 next = Vector3.MoveTowards(current, _targetPosition, moveSpeed * Time.deltaTime);
             SetCurrentPosition(next);
+
+            if (_hasPendingMove && Vector3.Distance(next, _targetPosition) <= 0.0001f)
+            {
+                _hasPendingMove = false;
+                if (lockAfterFirstMove)
+                {
+                    _isMoveLocked = true;
+                }
+            }
         }
 
         public void MoveDefault()
@@ -38,25 +52,35 @@ namespace IGame.Core
 
         public void MoveByDirection(Vector3 direction, float distance)
         {
+            if (_isMoveLocked)
+                return;
+
             Vector3 resolvedDirection = GetResolvedDirection(direction);
             if (resolvedDirection.sqrMagnitude <= 0.0001f)
                 return;
 
             _targetPosition += resolvedDirection.normalized * Mathf.Abs(distance);
+            _hasPendingMove = true;
         }
 
         public void MoveToCurrentPlusDirection(Vector3 direction, float distance)
         {
+            if (_isMoveLocked)
+                return;
+
             Vector3 resolvedDirection = GetResolvedDirection(direction);
             if (resolvedDirection.sqrMagnitude <= 0.0001f)
                 return;
 
             _targetPosition = GetCurrentPosition() + resolvedDirection.normalized * Mathf.Abs(distance);
+            _hasPendingMove = true;
         }
 
         public void ResetTarget()
         {
             _targetPosition = GetCurrentPosition();
+            _hasPendingMove = false;
+            _isMoveLocked = false;
         }
 
         private Vector3 GetCurrentPosition()
