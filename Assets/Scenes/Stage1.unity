@@ -450,7 +450,19 @@ MonoBehaviour:
   finalSortingOrder: 10
   onComplete:
     m_PersistentCalls:
-      m_Calls: []
+      m_Calls:
+      - m_Target: {fileID: 2031247694}
+        m_TargetAssemblyTypeName: IGame.Core.SceneLoader, Assembly-CSharp
+        m_MethodName: LoadConfiguredScene
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
 --- !u!114 &281592440
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -518,6 +530,13 @@ MonoBehaviour:
   fallingFlashDuration: 0.24
   fallingSquashDuration: 0.2
   fallingSquashScale: {x: 1.08, y: 0.92}
+  interactionAudioSource: {fileID: 524584351}
+  dragStartClip: {fileID: 8300000, guid: bec00ee8d888ec24b83f99821ef4921c, type: 3}
+  dragStartVolume: 0.463
+  rotatingClip: {fileID: 8300000, guid: fed9713f1491ad14898242c5399b586b, type: 3}
+  rotatingVolume: 0.479
+  rotatingSoundInterval: 0.06
+  rotatingSoundAngleStep: 2.5
   collisionMask:
     serializedVersion: 2
     m_Bits: 4294967295
@@ -838,6 +857,18 @@ MonoBehaviour:
           m_StringArgument: 
           m_BoolArgument: 0
         m_CallState: 2
+      - m_Target: {fileID: 1778179290}
+        m_TargetAssemblyTypeName: IGame.Core.IFitSequencePuzzle, Assembly-CSharp
+        m_MethodName: BeginPuzzle
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
 --- !u!1 &307719599
 GameObject:
   m_ObjectHideFlags: 0
@@ -892,6 +923,7 @@ MonoBehaviour:
   targetCanvasGroup: {fileID: 1716957856}
   targetImage: {fileID: 307719602}
   duration: 0.6
+  playFadeOutOnStart: 1
   playOnlyOnce: 1
   prepareHiddenOnAwake: 1
   onComplete:
@@ -1134,6 +1166,135 @@ CanvasGroup:
   m_Interactable: 1
   m_BlocksRaycasts: 1
   m_IgnoreParentGroups: 0
+--- !u!1 &524584350
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 524584352}
+  - component: {fileID: 524584351}
+  m_Layer: 0
+  m_Name: AudioSource
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!82 &524584351
+AudioSource:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 524584350}
+  m_Enabled: 1
+  serializedVersion: 4
+  OutputAudioMixerGroup: {fileID: 0}
+  m_audioClip: {fileID: 0}
+  m_Resource: {fileID: 0}
+  m_PlayOnAwake: 1
+  m_Volume: 1
+  m_Pitch: 1
+  Loop: 0
+  Mute: 0
+  Spatialize: 0
+  SpatializePostEffects: 0
+  Priority: 128
+  DopplerLevel: 1
+  MinDistance: 1
+  MaxDistance: 500
+  Pan2D: 0
+  rolloffMode: 0
+  BypassEffects: 0
+  BypassListenerEffects: 0
+  BypassReverbZones: 0
+  rolloffCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  panLevelCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  spreadCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  reverbZoneMixCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+--- !u!4 &524584352
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 524584350}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.09103, y: 0.29046, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &600471054
 GameObject:
   m_ObjectHideFlags: 0
@@ -2427,6 +2588,7 @@ MonoBehaviour:
   angleThreshold: 8
   stretchThreshold: 0.05
   requiredHoldTime: 0.15
+  beginOnStart: 0
   showOnlyCurrentStepVisual: 1
   steps:
   - targetPose: {fileID: 0}
@@ -2469,7 +2631,15 @@ MonoBehaviour:
   allClearedPunch: {x: 0.18, y: 0.28, z: 0}
   allClearedFlashColor: {r: 1, g: 0.95, b: 0.55, a: 1}
   allClearedFlashDuration: 0.3
+  audioSource: {fileID: 524584351}
+  stepClearedClip: {fileID: 8300000, guid: b3d09c04d3d487b4d9302faaadc42ee3, type: 3}
+  stepClearedVolume: 1
+  allClearedClip: {fileID: 8300000, guid: 6e0ab31e92657f24c862d7fbcf47229c, type: 3}
+  allClearedVolume: 1
   onProgressReset:
+    m_PersistentCalls:
+      m_Calls: []
+  onPuzzleBegan:
     m_PersistentCalls:
       m_Calls: []
   onStepStarted:
@@ -2508,6 +2678,52 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2031247692
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2031247693}
+  - component: {fileID: 2031247694}
+  m_Layer: 0
+  m_Name: SceneChanger
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2031247693
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2031247692}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -1.01143, y: 2.4285, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2031247694
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2031247692}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 22405587f53fadd4e9fae31157d43857, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::IGame.Core.SceneLoader
+  sceneName: Stage2
+  sceneBuildIndex: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -2521,3 +2737,5 @@ SceneRoots:
   - {fileID: 1466663388}
   - {fileID: 281592448}
   - {fileID: 957972131}
+  - {fileID: 524584352}
+  - {fileID: 2031247693}

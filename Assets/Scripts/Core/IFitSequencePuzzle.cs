@@ -52,6 +52,7 @@ namespace IGame.Core
         [SerializeField] private float requiredHoldTime = 0.15f;
 
         [Header("Flow")]
+        [SerializeField] private bool beginOnStart = true;
         [SerializeField] private bool showOnlyCurrentStepVisual = true;
         [SerializeField] private IFitSequenceStep[] steps = Array.Empty<IFitSequenceStep>();
 
@@ -72,14 +73,25 @@ namespace IGame.Core
         [SerializeField] private Color allClearedFlashColor = new Color(1f, 0.95f, 0.55f, 1f);
         [SerializeField] private float allClearedFlashDuration = 0.3f;
 
+        [Header("Audio")]
+        [SerializeField] private AudioSource audioSource;
+        [SerializeField] private AudioClip stepClearedClip;
+        [Range(0f, 1f)]
+        [SerializeField] private float stepClearedVolume = 1f;
+        [SerializeField] private AudioClip allClearedClip;
+        [Range(0f, 1f)]
+        [SerializeField] private float allClearedVolume = 1f;
+
         [Header("Events")]
         [SerializeField] private UnityEvent onProgressReset;
+        [SerializeField] private UnityEvent onPuzzleBegan;
         [SerializeField] private IFitSequenceStepEvent onStepStarted;
         [SerializeField] private IFitSequenceStepEvent onStepCleared;
         [SerializeField] private UnityEvent onAllCleared;
 
         public int CurrentStepIndex { get; private set; }
         public bool IsAllCleared { get; private set; }
+        public bool IsRunning { get; private set; }
 
         private float currentHoldTimer;
         private readonly List<GameObject> generatedGhostVisuals = new List<GameObject>();
@@ -96,12 +108,12 @@ namespace IGame.Core
 
         private void Start()
         {
-            ResetProgress();
+            ResetProgressInternal(beginOnStart);
         }
 
         private void FixedUpdate()
         {
-            if (IsAllCleared || targetI == null)
+            if (!IsRunning || IsAllCleared || targetI == null)
                 return;
 
             SkipInvalidSteps();
@@ -128,17 +140,46 @@ namespace IGame.Core
 
         public void ResetProgress()
         {
-            ResolveReferences();
-            CurrentStepIndex = 0;
+            ResetProgressInternal(beginOnStart);
+        }
+
+        public void BeginPuzzle()
+        {
+            if (IsRunning || IsAllCleared)
+                return;
+
+            IsRunning = true;
             currentHoldTimer = 0f;
-            IsAllCleared = false;
-            SkipInvalidSteps();
             UpdateStepVisuals();
-            onProgressReset?.Invoke();
+            onPuzzleBegan?.Invoke();
 
             if (GetCurrentStep() != null)
             {
                 onStepStarted?.Invoke(CurrentStepIndex);
+            }
+        }
+
+        public void StopPuzzle()
+        {
+            IsRunning = false;
+            currentHoldTimer = 0f;
+            UpdateStepVisuals();
+        }
+
+        private void ResetProgressInternal(bool beginImmediately)
+        {
+            ResolveReferences();
+            CurrentStepIndex = 0;
+            currentHoldTimer = 0f;
+            IsAllCleared = false;
+            IsRunning = false;
+            SkipInvalidSteps();
+            onProgressReset?.Invoke();
+            UpdateStepVisuals();
+
+            if (beginImmediately)
+            {
+                BeginPuzzle();
             }
         }
 
@@ -158,6 +199,11 @@ namespace IGame.Core
             if (targetI == null)
             {
                 targetI = FindFirstObjectByType<IController>();
+            }
+
+            if (audioSource == null)
+            {
+                audioSource = GetComponent<AudioSource>();
             }
 
             CacheInitialTargetScale();
@@ -311,6 +357,7 @@ namespace IGame.Core
                 return;
             }
 
+            PlayStepClearedSound();
             step.onStepCleared?.Invoke();
             onStepCleared?.Invoke(CurrentStepIndex);
             PlayStepClearAnimation();
@@ -338,6 +385,7 @@ namespace IGame.Core
             currentHoldTimer = 0f;
             UpdateStepVisuals();
             PlayAllClearedAnimation();
+            PlayAllClearedSound();
             onAllCleared?.Invoke();
         }
 
@@ -385,6 +433,22 @@ namespace IGame.Core
                                 .SetLink(spriteRenderer.gameObject);
                         }
                     });
+            }
+        }
+
+        private void PlayStepClearedSound()
+        {
+            if (audioSource != null && stepClearedClip != null)
+            {
+                audioSource.PlayOneShot(stepClearedClip, stepClearedVolume);
+            }
+        }
+
+        private void PlayAllClearedSound()
+        {
+            if (audioSource != null && allClearedClip != null)
+            {
+                audioSource.PlayOneShot(allClearedClip, allClearedVolume);
             }
         }
 
@@ -493,6 +557,7 @@ namespace IGame.Core
                     continue;
 
                 bool shouldShow = !IsAllCleared &&
+                                  IsRunning &&
                                   (!showOnlyCurrentStepVisual || i == CurrentStepIndex) &&
                                   i >= CurrentStepIndex;
                 visual.SetActive(shouldShow);

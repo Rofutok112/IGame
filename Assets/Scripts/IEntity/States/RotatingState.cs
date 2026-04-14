@@ -31,6 +31,7 @@ namespace IGame.IEntity.States
             base.Enter(controller);
             controller.EnterPinnedVisualState();
             controller.ShowRotationGuide();
+            controller.ResetRotatingSoundGate();
             originalGravity = controller.Rb.gravityScale;
             originalBodyType = controller.Rb.bodyType;
             controller.Rb.bodyType = RigidbodyType2D.Kinematic;
@@ -70,25 +71,26 @@ namespace IGame.IEntity.States
             float candidateRotation = Mathf.LerpAngle(currentRotation, targetRotation,
                 Time.fixedDeltaTime * controller.rotateSpeed);
 
-            ApplySteppedRotation(currentRotation, candidateRotation);
+            float appliedRotation = ApplySteppedRotation(currentRotation, candidateRotation);
+            controller.TryPlayRotatingSound(Mathf.DeltaAngle(currentRotation, appliedRotation));
         }
 
         /// <summary>
         /// Advances from <paramref name="startAngle"/> toward <paramref name="targetAngle"/>
         /// in small increments, stopping at the last non-penetrating angle.
         /// </summary>
-        private void ApplySteppedRotation(float startAngle, float targetAngle)
+        private float ApplySteppedRotation(float startAngle, float targetAngle)
         {
             if (_colliders == null || _colliders.Length == 0)
             {
                 controller.Rb.MoveRotation(targetAngle);
-                return;
+                return targetAngle;
             }
 
             float delta = Mathf.DeltaAngle(startAngle, targetAngle);
             float absDelta = Mathf.Abs(delta);
             if (absDelta <= 0.001f)
-                return;
+                return startAngle;
 
             int stepCount = Mathf.Max(1, Mathf.CeilToInt(absDelta / RotationStepDegrees));
             float appliedAngle = startAngle;
@@ -105,6 +107,7 @@ namespace IGame.IEntity.States
 
             controller.Rb.MoveRotation(appliedAngle);
             Physics2D.SyncTransforms();
+            return appliedAngle;
         }
 
         /// Returns true if rotating to the candidate angle would overlap another collider.

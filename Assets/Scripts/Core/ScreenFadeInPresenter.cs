@@ -20,6 +20,9 @@ namespace IGame.Core
         [Min(0.01f)]
         public float duration = 0.6f;
 
+        [Tooltip("Play a fade-out automatically when the scene starts.")]
+        public bool playFadeOutOnStart = false;
+
         [Tooltip("Only play the fade once.")]
         public bool playOnlyOnce = true;
 
@@ -44,6 +47,14 @@ namespace IGame.Core
             {
                 ApplyHiddenState();
                 resolvedRoot.SetActive(false);
+            }
+        }
+
+        private void Start()
+        {
+            if (playFadeOutOnStart)
+            {
+                PlayFadeOutAsync().Forget();
             }
         }
 
@@ -75,6 +86,34 @@ namespace IGame.Core
                 .SetLink(resolvedRoot)
                 .SetUpdate(true)
                 .Append(resolvedCanvasGroup.DOFade(1f, duration).SetEase(Ease.OutQuad));
+
+            await sequence.AsyncWaitForCompletion().AsUniTask();
+            onComplete?.Invoke();
+        }
+
+        public void PlayFadeOut()
+        {
+            PlayFadeOutAsync().Forget();
+        }
+
+        public async UniTask PlayFadeOutAsync()
+        {
+            ResolveReferences();
+
+            if (playOnlyOnce && hasPlayed)
+                return;
+
+            hasPlayed = true;
+            sequence?.Kill();
+
+            resolvedRoot.SetActive(true);
+            ApplyVisibleState();
+
+            sequence = DOTween.Sequence()
+                .SetLink(resolvedRoot)
+                .SetUpdate(true)
+                .Append(resolvedCanvasGroup.DOFade(0f, duration).SetEase(Ease.OutQuad))
+                .OnComplete(() => resolvedRoot.SetActive(false));
 
             await sequence.AsyncWaitForCompletion().AsUniTask();
             onComplete?.Invoke();
@@ -128,6 +167,19 @@ namespace IGame.Core
             if (resolvedCanvasGroup != null)
             {
                 resolvedCanvasGroup.alpha = 0f;
+            }
+
+            if (resolvedImage != null)
+            {
+                resolvedImage.color = initialImageColor;
+            }
+        }
+
+        private void ApplyVisibleState()
+        {
+            if (resolvedCanvasGroup != null)
+            {
+                resolvedCanvasGroup.alpha = 1f;
             }
 
             if (resolvedImage != null)

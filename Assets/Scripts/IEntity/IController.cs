@@ -85,6 +85,24 @@ namespace IGame.IEntity
         [Tooltip("Relative scale applied briefly when falling starts. X > 1 and Y < 1 reads like a drop release.")]
         public Vector2 fallingSquashScale = new Vector2(1.08f, 0.92f);
 
+        [Header("Audio")]
+        [Tooltip("AudioSource used for interaction sound effects. If empty, searched on this object.")]
+        public AudioSource interactionAudioSource;
+        [Tooltip("Played once when drag begins.")]
+        public AudioClip dragStartClip;
+        [Range(0f, 1f)]
+        public float dragStartVolume = 1f;
+        [Tooltip("Repeated while rotating.")]
+        public AudioClip rotatingClip;
+        [Range(0f, 1f)]
+        public float rotatingVolume = 1f;
+        [Min(0f)]
+        [Tooltip("Minimum time between repeated rotation sounds.")]
+        public float rotatingSoundInterval = 0.06f;
+        [Min(0f)]
+        [Tooltip("Minimum angle movement required before another rotation sound can play.")]
+        public float rotatingSoundAngleStep = 2.5f;
+
         [Header("Collision")]
         [Tooltip("Layers that block movement and rotation. Default = Everything.")]
         public LayerMask collisionMask = ~0;   // ~0 = all layers
@@ -99,6 +117,7 @@ namespace IGame.IEntity
         private SpriteRenderer[] cachedStateSpriteRenderers = new SpriteRenderer[0];
         private Color[] cachedBaseSpriteColors = new Color[0];
         private bool hasCachedStateVisuals;
+        private float lastRotatingSoundTime = float.NegativeInfinity;
 
         /// <summary>Returns a ContactFilter2D configured with the collisionMask, excluding triggers.</summary>
         public ContactFilter2D GetContactFilter()
@@ -113,6 +132,10 @@ namespace IGame.IEntity
         void Start()
         {
             Rb = GetComponent<Rigidbody2D>();
+            if (interactionAudioSource == null)
+            {
+                interactionAudioSource = GetComponent<AudioSource>();
+            }
             CacheRotationGuideScale();
             CacheStateVisuals();
 
@@ -289,6 +312,34 @@ namespace IGame.IEntity
                 .Append(transform.DOScale(baseScale, fallingSquashDuration * 0.55f).SetEase(Ease.OutCubic));
 
             sequence.Play();
+        }
+
+        public void PlayDragStartSound()
+        {
+            if (interactionAudioSource == null || dragStartClip == null)
+                return;
+
+            interactionAudioSource.PlayOneShot(dragStartClip, dragStartVolume);
+        }
+
+        public void ResetRotatingSoundGate()
+        {
+            lastRotatingSoundTime = float.NegativeInfinity;
+        }
+
+        public void TryPlayRotatingSound(float angleMoved)
+        {
+            if (interactionAudioSource == null || rotatingClip == null)
+                return;
+
+            if (Mathf.Abs(angleMoved) < rotatingSoundAngleStep)
+                return;
+
+            if (Time.unscaledTime - lastRotatingSoundTime < rotatingSoundInterval)
+                return;
+
+            lastRotatingSoundTime = Time.unscaledTime;
+            interactionAudioSource.PlayOneShot(rotatingClip, rotatingVolume);
         }
 
         public Collider2D[] GetSolidColliders()
